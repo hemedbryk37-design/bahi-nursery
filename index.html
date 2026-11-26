@@ -79,7 +79,10 @@ h1{margin:0 0 14px;font-size:24px}.top h1{margin:0}h3{margin:0 0 10px}
  h1{font-size:20px}
 }
 @media(max-width:560px){.grid{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}.stat b{font-size:22px}}
+@page{margin:0}
 @media print{
+ html,body{margin:0!important;padding:0!important}
+ #printArea{padding:14mm 16mm;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  .noprint{display:none!important}
  body>*:not(#printArea){display:none!important}
  #printArea{display:block!important}
@@ -194,9 +197,11 @@ h1{margin:0 0 14px;font-size:24px}.top h1{margin:0}h3{margin:0 0 10px}
    <label class="fin">عدد الأقساط<input id="cInstN" type="number" min="1" max="24"></label>
    <label class="fin">تاريخ استحقاق أول قسط<input id="cInstFirst" type="date"></label>
    <label class="fin">كل كم شهر<input id="cInstEvery" type="number" min="1" max="12"></label>
-   <label class="fin">نوع الخصم<select id="cDiscType"><option value="">بدون خصم</option><option value="amt">مبلغ ثابت</option><option value="pct">نسبة %</option></select></label>
-   <label class="fin">قيمة الخصم<input id="cDiscVal" type="number" min="0"></label>
-   <label class="full fin">سبب الخصم (مثل: إخوة)<input id="cDiscNote"></label>
+   <label class="fin">حالة الرسوم<select id="cFeeStatus" onchange="onFeeStatus()"><option value="full">رسوم كاملة (عادي)</option><option value="partial">إعفاء جزئي</option><option value="total">إعفاء كلي (100%)</option></select></label>
+   <label id="cDiscTypeL" style="display:none">نوع الخصم<select id="cDiscType" onchange="onFeeStatus()"><option value="pct">نسبة %</option><option value="amt">مبلغ مقطوع</option></select></label>
+   <label id="cDiscValL" style="display:none">قيمة الخصم<input id="cDiscVal" type="number" min="0"></label>
+   <div class="note" id="cFeePrev" style="display:none;grid-column:1/-1"></div>
+   <label class="full" id="cReasonL" style="display:none">سبب الإعفاء (للمدير فقط — لا يظهر في أي تقرير أو مطبوع)<input id="cExReason"></label>
    <label>تاريخ الالتحاق<input id="cJoin" type="date"></label>
    <label>هاتف ثانٍ (الأم أو الأب)<input id="cPhone2" type="tel"></label>
    <label class="full">العنوان<input id="cAddr"></label>
@@ -259,17 +264,20 @@ h1{margin:0 0 14px;font-size:24px}.top h1{margin:0}h3{margin:0 0 10px}
  <h1>الرسوم والمدفوعات</h1>
  <div class="card"><h3>تسجيل دفعة</h3>
   <div class="form">
-   <label>الطفل<select id="pChild"></select></label>
+   <label>الطفل<select id="pChild" onchange="updWaiveBtn()"></select></label>
    <label>المبلغ<input id="pAmount" type="number" min="0"></label>
    <label>طريقة الدفع<select id="pMethod"><option>نقدي</option><option>تحويل بنكي</option><option>أخرى</option></select></label>
    <label>التاريخ<input id="pDate" type="date" onchange="pHijri.value=hijriStr(pDate.value)"></label>
    <label>التاريخ الهجري (تلقائي، قابل للتعديل)<input id="pHijri"></label>
    <label class="full">ملاحظات<input id="pNote"></label>
   </div>
-  <div class="actions"><button class="btn gold" onclick="addPayment()">حفظ وإصدار سند</button></div>
+  <div class="actions"><button class="btn gold" onclick="addPayment()">حفظ وإصدار سند</button><button class="btn light" id="pWaiveBtn" onclick="openWaive()">إعفاء</button></div>
  </div>
  <div class="card"><h3>سجل الدفعات</h3>
   <div class="tw"><table class="table"><thead><tr><th>السند</th><th>التاريخ</th><th>الطفل</th><th>المبلغ</th><th>الطريقة</th><th></th></tr></thead><tbody id="paymentsTable"></tbody></table></div>
+ </div>
+ <div class="card"><h3>سجل الإعفاءات</h3>
+  <div class="tw"><table class="table"><thead><tr><th>التاريخ</th><th>الطفل</th><th>المبلغ</th><th>النوع</th><th></th></tr></thead><tbody id="waiversTable"></tbody></table></div>
  </div>
 </section>
 
@@ -287,6 +295,7 @@ h1{margin:0 0 14px;font-size:24px}.top h1{margin:0}h3{margin:0 0 10px}
     <label>عمود الباقي<select id="balCRest" onchange="buildBalPreview()"></select></label>
    </div>
    <div class="note" id="balSum" style="margin:10px 0"></div>
+   <div class="actions" style="margin:0 0 8px"><button class="btn gold" id="balExAll" style="display:none" onclick="balExemptAll()"></button></div>
    <div class="tw" style="max-height:420px;overflow:auto"><table class="table"><thead><tr><th>✓</th><th>م</th><th>الاسم</th><th>المطلوب</th><th>الواصل</th><th>الباقي</th><th>الحالة</th></tr></thead><tbody id="balPrev"></tbody></table></div>
    <div class="actions"><button class="btn gold" onclick="doBalImport()">اعتماد المحدد</button><button class="btn light" onclick="cancelBalImport()">إلغاء</button></div>
   </div>
@@ -323,13 +332,14 @@ h1{margin:0 0 14px;font-size:24px}.top h1{margin:0}h3{margin:0 0 10px}
   <div id="rpBox" style="margin-top:12px"></div>
   <div class="actions"><button class="btn" onclick="printFull()">طباعة الملخص</button></div>
  </div>
- <div class="grid3">
+ <div class="grid">
   <div class="card stat green">الأطفال<b id="rChildren">0</b></div>
   <div class="card stat green">إجمالي التحصيل<b id="rPaid">0</b></div>
   <div class="card stat gold">إجمالي الرسوم المسجلة<b id="rFees">0</b></div>
+  <div class="card stat gold">إجمالي الإعفاءات<b id="rEx">0</b></div>
  </div>
  <div class="card"><h3>تقرير مالي مختصر</h3>
-  <div class="tw"><table class="table"><thead><tr><th>الطفل</th><th>الفصل</th><th>الرسوم</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody id="reportTable"></tbody><tfoot id="reportFoot"></tfoot></table></div>
+  <div class="tw"><table class="table"><thead><tr><th>الطفل</th><th>الفصل</th><th>الرسوم</th><th>الإعفاء</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody id="reportTable"></tbody><tfoot id="reportFoot"></tfoot></table></div>
   <div class="actions"><button class="btn" onclick="printReport()">طباعة التقرير</button></div>
  </div>
 </section>
@@ -626,8 +636,9 @@ const defaults=()=>({children:[],payments:[],attendance:{},classes:[],seq:0,seq2
  settings:{name:'رياض أطفال بهي الدين',slogan:'نُنَمّي العقول .. ونُزهر القلوب',phone:'',year:'',cur:'',minM:36,maxM:72,refMode:'today',refDate:'',strict:true,excMode:'pct',excVal:10,workStart:'08:00',graceMin:10,freeAbsent:2,dayBase:30,lateDeduct:'0',hoursPerDay:8,absConsec:3,absMonth:5,instN:1,instEvery:1,instFirst:'',workEnd:'14:00',evalMax:10,passPct:50,countryCode:'20',dueSoonDays:5,absPct:20,openBal:0,hijriAdj:0,sig:'',stamp:'',sigOn:{receipt:true,voucher:true,account:true,report:true,notice:true}}});
 function normalize(x){
  const d=defaults();x=x&&typeof x==='object'?x:{};
- x.children=Array.isArray(x.children)?x.children:[];x.applicants=Array.isArray(x.applicants)?x.applicants:[];x.staff=Array.isArray(x.staff)?x.staff:[];['followups','staffAdj','staffEval','incomes','assets','stock','imports'].forEach(k=>{x[k]=Array.isArray(x[k])?x[k]:[]});x.timetable=x.timetable&&typeof x.timetable==='object'?x.timetable:{};x.periods=Array.isArray(x.periods)&&x.periods.length?x.periods:d.periods;x.seq3=x.seq3||0;x.recon=x.recon||null;x.expenses=Array.isArray(x.expenses)?x.expenses:[];x.cats=Array.isArray(x.cats)?x.cats:[];x.staffAtt=x.staffAtt&&typeof x.staffAtt==='object'?x.staffAtt:{};x.seq2=x.seq2||x.expenses.length;x.payments=Array.isArray(x.payments)?x.payments:[];
- x.attendance=x.attendance&&typeof x.attendance==='object'?x.attendance:{};x.classes=Array.isArray(x.classes)?x.classes:[];
+ x.children=Array.isArray(x.children)?x.children:[];x.applicants=Array.isArray(x.applicants)?x.applicants:[];x.staff=Array.isArray(x.staff)?x.staff:[];['followups','staffAdj','staffEval','incomes','assets','stock','imports','waivers'].forEach(k=>{x[k]=Array.isArray(x[k])?x[k]:[]});x.timetable=x.timetable&&typeof x.timetable==='object'?x.timetable:{};x.periods=Array.isArray(x.periods)&&x.periods.length?x.periods:d.periods;x.seq3=x.seq3||0;x.recon=x.recon||null;x.expenses=Array.isArray(x.expenses)?x.expenses:[];x.cats=Array.isArray(x.cats)?x.cats:[];x.staffAtt=x.staffAtt&&typeof x.staffAtt==='object'?x.staffAtt:{};x.seq2=x.seq2||x.expenses.length;x.payments=Array.isArray(x.payments)?x.payments:[];
+ x.attendance=x.attendance&&typeof x.attendance==='object'?x.attendance:{};
+ x.children.forEach(c=>{if(c.disc&&c.disc.note!==undefined){if(c.disc.note&&c.disc.note!=='معفى'&&!c.exReason)c.exReason=c.disc.note;delete c.disc.note}if(!c.feeStatus)c.feeStatus=(c.disc&&+c.disc.val>0)?((c.disc.type==='pct'&&+c.disc.val>=100)?'total':'partial'):'full'});x.classes=Array.isArray(x.classes)?x.classes:[];
  x.seq=x.seq||x.payments.filter(p=>p.no).length;x.lastBackup=x.lastBackup||'';
  x.users=Array.isArray(x.users)&&x.users.length?x.users:d.users;
  x.settings=Object.assign(d.settings,x.settings||{});
@@ -772,6 +783,7 @@ const renderAgeBox=()=>ageBox_(cNid,cBirth,$('ageBox')),renderAppBox=()=>ageBox_
 async function saveChild(){
  const name=cName.value.trim();if(!name){await aAlert('اكتب اسم الطفل');return}
  const old=editId?db.children.find(c=>c.id===editId):null;
+ if(fin()&&cFeeStatus.value==='partial'){const dv=+cDiscVal.value;if(!(dv>0)){await aAlert('حدّد قيمة الخصم للإعفاء الجزئي');return}if(cDiscType.value==='pct'&&dv>=100){await aAlert('الإعفاء الجزئي بنسبة أقل من 100٪؛ استخدم «إعفاء كلي» للإعفاء الكامل');return}}
  let nid=normDigits(cNid.value),nidInfo=null;
  if(nid){nidInfo=parseNid(nid);if(!nidInfo.ok){await aAlert('الرقم القومي غير صحيح: '+nidInfo.err);return}}
  else if(old&&old.nid){nid=old.nid;nidInfo=parseNid(nid)}
@@ -814,7 +826,10 @@ async function saveChild(){
   const rec={id:old?old.id:Date.now(),name,birth,gender,nid,cls,parent:cParent.value.trim(),phone:cPhone.value.trim(),
    fee:fin()?(+cFee.value||0):(old?old.fee:0),photo:photo!==null?photo:(old?old.photo:''),admit,
    join:cJoin.value||(old?old.join:today()),phone2:cPhone2.value.trim(),addr:cAddr.value.trim(),notes:cNotes.value.trim(),docs:docsDraft.slice(),moves:old?old.moves||[]:[],
-   disc:fin()?((cDiscType.value&&+cDiscVal.value>0)?{type:cDiscType.value,val:+cDiscVal.value,note:cDiscNote.value.trim()}:null):(old?old.disc||null:null),
+   feeStatus:fin()?cFeeStatus.value:(old?feeStatusOf(old):'full'),
+   disc:fin()?(cFeeStatus.value==='total'?{type:'pct',val:100}:(cFeeStatus.value==='partial'?{type:cDiscType.value||'pct',val:+cDiscVal.value}:null)):(old?old.disc||null:null),
+   exReason:isAdmin()?cExReason.value.trim():(old?old.exReason||'':''),
+   exDate:fin()?(cFeeStatus.value==='full'?'':((old&&feeStatusOf(old)===cFeeStatus.value&&old.exDate)||today())):(old?old.exDate||'':''),
    plan:fin()?((+cInstN.value>0&&cInstFirst.value)?{n:Math.min(24,Math.floor(+cInstN.value)),first:cInstFirst.value,every:Math.max(1,Math.floor(+cInstEvery.value)||1)}:null):(old?old.plan||null:null)};
   if(!old){const imp=unlinkedImp(nameKey(name));if(imp)applyImport(rec,imp)}
   if(old)Object.assign(old,rec);else db.children.push(rec);
@@ -1120,12 +1135,12 @@ function saveAdmission(){
  save();toast('تم حفظ شروط القبول');
 }
 function resetChildForm(){
- editId=null;setTimeout(onCName,0);['cName','cNid','cBirth','cClass','cParent','cPhone'].forEach(i=>$(i).value='');cGender.value='';cNid.placeholder='١٤ رقمًا';renderAgeBox();cFee.value=0;cInstN.value=db.settings.instN||1;cInstEvery.value=db.settings.instEvery||1;cInstFirst.value=db.settings.instFirst||'';cJoin.value=today();cPhone2.value='';cAddr.value='';cNotes.value='';cDiscType.value='';cDiscVal.value='';cDiscNote.value='';docsDraft=[];renderDocsDraft();cPhoto.value='';cCam.value='';pendingPhoto=null;$('photoName').style.display='none';
+ editId=null;setTimeout(onCName,0);['cName','cNid','cBirth','cClass','cParent','cPhone'].forEach(i=>$(i).value='');cGender.value='';cNid.placeholder='١٤ رقمًا';renderAgeBox();cFee.value=0;cInstN.value=db.settings.instN||1;cInstEvery.value=db.settings.instEvery||1;cInstFirst.value=db.settings.instFirst||'';cJoin.value=today();cPhone2.value='';cAddr.value='';cNotes.value='';cFeeStatus.value='full';cDiscType.value='pct';cDiscVal.value='';cExReason.value='';onFeeStatus();docsDraft=[];renderDocsDraft();cPhoto.value='';cCam.value='';pendingPhoto=null;$('photoName').style.display='none';
  childFormTitle.textContent='إضافة طفل جديد';childSaveBtn.textContent='حفظ الطفل';childCancelBtn.style.display='none';
 }
 function editChild(id){
  const c=db.children.find(x=>x.id===id);if(!c)return;editId=id;
- cName.value=c.name;cNid.value=isAdmin()?(c.nid||''):'';cNid.placeholder=(!isAdmin()&&c.nid)?'محفوظ، اتركه فارغًا للإبقاء عليه':'١٤ رقمًا';cGender.value=c.gender||'';cBirth.value=c.birth||'';fillClassSelect(cClass,c.cls||'');cParent.value=c.parent||'';cPhone.value=c.phone||'';cFee.value=c.fee||0;{const pl=c.plan||{};cInstN.value=pl.n||'';cInstFirst.value=pl.first||'';cInstEvery.value=pl.every||1}cJoin.value=c.join||'';cPhone2.value=c.phone2||'';cAddr.value=c.addr||'';cNotes.value=c.notes||'';{const dd=c.disc||{};cDiscType.value=dd.type||'';cDiscVal.value=dd.val||'';cDiscNote.value=dd.note||''}docsDraft=(c.docs||[]).slice();renderDocsDraft();cPhoto.value='';cCam.value='';pendingPhoto=null;$('photoName').style.display='none';renderAgeBox();
+ cName.value=c.name;cNid.value=isAdmin()?(c.nid||''):'';cNid.placeholder=(!isAdmin()&&c.nid)?'محفوظ، اتركه فارغًا للإبقاء عليه':'١٤ رقمًا';cGender.value=c.gender||'';cBirth.value=c.birth||'';fillClassSelect(cClass,c.cls||'');cParent.value=c.parent||'';cPhone.value=c.phone||'';cFee.value=c.fee||0;{const pl=c.plan||{};cInstN.value=pl.n||'';cInstFirst.value=pl.first||'';cInstEvery.value=pl.every||1}cJoin.value=c.join||'';cPhone2.value=c.phone2||'';cAddr.value=c.addr||'';cNotes.value=c.notes||'';{const dd=c.disc||{},fs=feeStatusOf(c);cFeeStatus.value=fs;cDiscType.value=(fs==='partial'&&dd.type)||'pct';cDiscVal.value=fs==='partial'?(dd.val||''):'';cExReason.value=isAdmin()?(c.exReason||''):'';onFeeStatus()}docsDraft=(c.docs||[]).slice();renderDocsDraft();cPhoto.value='';cCam.value='';pendingPhoto=null;$('photoName').style.display='none';renderAgeBox();
  childFormTitle.textContent='تعديل: '+c.name;childSaveBtn.textContent='حفظ التعديل';childCancelBtn.style.display='';window.scrollTo(0,0);
 }
 async function delChild(id){
@@ -1289,6 +1304,7 @@ function renderPayments(){
  pChild.innerHTML=db.children.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
  if(db.children.some(c=>String(c.id)===sel))pChild.value=sel;
  if(!pDate.value)pDate.value=today();if(!pHijri.value)pHijri.value=hijriStr(pDate.value);
+ updWaiveBtn();waiversTable.innerHTML=db.waivers.slice().reverse().map(w=>`<tr><td>${esc(w.date)}</td><td>${esc(childName(w.child))}</td><td>${num(w.amount)}</td><td>${w.kind==='exc'?'إعفاء استثنائي':'إعفاء'}</td><td>${isAdmin()?`<button class="btn danger mini" onclick="delWaiver(${w.id})">حذف</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">لا توجد إعفاءات</td></tr>';
  paymentsTable.innerHTML=db.payments.slice().reverse().map(p=>`<tr><td>${payNo(p)}</td><td>${esc(p.date)}</td><td>${esc(childName(p.child))}</td><td>${num(p.amount)}</td><td>${esc(p.method)}</td><td style="white-space:nowrap">${p.open?'':`<button class="btn mini" onclick="showReceipt(${p.id})">سند</button> `}<button class="btn danger mini" onclick="delPayment(${p.id})">حذف</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">لا توجد دفعات</td></tr>';
 }
 
@@ -1536,7 +1552,7 @@ function showProfile(id){
  const at=childAttStats(id),ev=childEval(id),fl=db.followups.filter(f=>f.child===id&&f.kind!=='تقييم دوري').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6);
  const r=(k,v)=>v?`<div class="rrow"><b>${k}</b><span>${v}</span></div>`:'';
  let money='';
- if(fin()){const st=statusOf(c),paid=db.payments.filter(p=>p.child===id).reduce((t,p)=>t+p.amount,0);money=r('الرسوم بعد الخصم',num(netFee(c)))+r('المدفوع',num(paid))+r('المتبقي',num(Math.max(0,netFee(c)-paid)))+(st.overdue?r('المتأخر','<span style="color:#b33a2e">'+num(st.overdue)+'</span>'):'');}
+ if(fin()){const st=statusOf(c),paid=db.payments.filter(p=>p.child===id).reduce((t,p)=>t+p.amount,0);money=(exTotalOf(c)>0?r('الرسوم الأصلية',num(+c.fee||0))+r('إعفاء',num(exTotalOf(c)))+r('الرسوم بعد الإعفاء',num(Math.max(0,r2((+c.fee||0)-exTotalOf(c))))):r('الرسوم',num(+c.fee||0)))+r('المدفوع',num(paid))+r('المتبقي',num(remainOf(c)))+(isAdmin()&&c.exReason?'<div class="noprint">'+r('سبب الإعفاء (للمدير فقط)',esc(c.exReason))+'</div>':'')+(st.overdue?r('المتأخر','<span style="color:#b33a2e">'+num(st.overdue)+'</span>'):'');}
  modalBody.innerHTML=`<div class="receipt"><div style="display:flex;gap:14px;align-items:center">${c.photo?`<img src="${c.photo}" style="width:80px;height:100px;object-fit:cover;border-radius:10px">`:''}<div><h2 style="text-align:right;margin:0">${esc(c.name)}</h2><div>${esc(c.cls||'بدون فصل')} ${c.gender?'— '+esc(c.gender):''}</div></div></div>
  ${r('تاريخ الميلاد',esc(c.birth||''))}${r('العمر',c.birth&&c.birth<=today()?fmtAge(ageParts(c.birth,today())):'')}${r('تاريخ الالتحاق',esc(c.join||''))}${r('ولي الأمر',esc(c.parent||''))}${r('الهاتف',esc(c.phone||''))}${r('هاتف ثانٍ',esc(c.phone2||''))}${r('العنوان',esc(c.addr||''))}${r('ملاحظات',esc(c.notes||''))}
  ${r('حالة القبول',c.admit?(c.admit.st==='exc'?'قبول استثنائي: '+esc(c.admit.note||''):'مقبول'):'')}${money}
@@ -1558,7 +1574,7 @@ function schedule(c){
  return out;
 }
 function statusOf(c){
- const paid=db.payments.filter(p=>p.child===c.id).reduce((t,p)=>t+p.amount,0),t=today();let rem=paid;
+ const paid=db.payments.filter(p=>p.child===c.id).reduce((t,p)=>t+p.amount,0),t=today();let rem=paid+waivedOf(c.id);
  const items=schedule(c).map(i=>{const cv=Math.min(rem,i.amt);rem-=cv;return{due:i.due,amt:i.amt,paid:r2(cv),left:r2(i.amt-cv)}});
  const over=items.filter(i=>i.left>0.009&&i.due<t);
  return{items,over,overdue:r2(over.reduce((x,i)=>x+i.left,0)),days:over.length?daysBetween(over[0].due,t):0,next:items.find(i=>i.left>0.009&&i.due>=t)};
@@ -1656,10 +1672,11 @@ function renderSig(){
 })();
 function saveInst(){const s=db.settings;s.instN=Math.max(1,Math.floor(+sInstN.value)||1);s.instEvery=Math.max(1,Math.floor(+sInstEvery.value)||1);s.instFirst=sInstFirst.value;save();toast('تم الحفظ')}
 function accountHTML(c,withBtns){
- const pays=db.payments.filter(p=>p.child===c.id),paid=pays.reduce((s,p)=>s+p.amount,0),remain=Math.max(0,netFee(c)-paid);
- return `<div class="grid3"><div class="card stat gold">الرسوم بعد الخصم<b>${num(netFee(c))}</b>${c.disc?'<small>الأصل '+num(c.fee)+' — '+esc(c.disc.note||'خصم')+'</small>':''}</div><div class="card stat green">إجمالي المدفوع<b>${num(paid)}</b></div><div class="card stat red">المتبقي<b>${num(remain)}</b></div></div>
+ const pays=db.payments.filter(p=>p.child===c.id),paid=pays.reduce((s,p)=>s+p.amount,0),ws=db.waivers.filter(w=>w.child===c.id).sort((x,y)=>x.date<y.date?-1:1),sx=exStatusAmt(c),ex=exTotalOf(c),remain=remainOf(c);
+ const exRows=(sx>0?`<tr><td>إعفاء</td><td>${esc(c.exDate||c.join||'')}</td><td>${num(sx)}</td>${withBtns?'<td></td>':''}</tr>`:'')+ws.map(w=>`<tr><td>إعفاء</td><td>${esc(w.date)}</td><td>${num(w.amount)}</td>${withBtns?`<td>${w.period?'<small>'+esc(w.period)+'</small> ':''}${isAdmin()?`<button class="btn danger mini" onclick="delWaiver(${w.id})">حذف</button>`:''}</td>`:''}</tr>`).join('');
+ return `<div class="grid"><div class="card stat gold">الرسوم الأصلية<b>${num(+c.fee||0)}</b></div>${ex>0?`<div class="card stat gold">إعفاء<b>${num(ex)}</b></div>`:''}<div class="card stat green">إجمالي المدفوع<b>${num(paid)}</b></div><div class="card stat red">المتبقي<b>${num(remain)}</b></div></div>
  <div class="card"><h3>الدفعات</h3><div class="tw"><table class="table"><thead><tr><th>السند</th><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th>${withBtns?'<th></th>':''}</tr></thead><tbody>
- ${pays.map(p=>`<tr><td>${payNo(p)}</td><td>${esc(p.date)}</td><td>${num(p.amount)}</td><td>${esc(p.method)}</td>${withBtns?`<td>${p.open?'':`<button class="btn mini" onclick="showReceipt(${p.id})">سند</button>`}</td>`:''}</tr>`).join('')||`<tr><td colspan="5" class="empty">لا توجد دفعات</td></tr>`}</tbody></table></div></div>${instCard(c)}`;
+ ${pays.map(p=>`<tr><td>${payNo(p)}</td><td>${esc(p.date)}</td><td>${num(p.amount)}</td><td>${esc(p.method)}</td>${withBtns?`<td>${p.open?'':`<button class="btn mini" onclick="showReceipt(${p.id})">سند</button>`}</td>`:''}</tr>`).join('')||`<tr><td colspan="5" class="empty">لا توجد دفعات</td></tr>`}</tbody></table></div></div>${ex>0?`<div class="card"><h3>الإعفاءات</h3><div class="tw"><table class="table"><thead><tr><th>البند</th><th>التاريخ</th><th>المبلغ</th>${withBtns?'<th></th>':''}</tr></thead><tbody>${exRows}</tbody></table></div></div>`:''}${instCard(c)}`;
 }
 function renderAccount(){
  const old=accountChild.value;
@@ -1690,12 +1707,12 @@ function renderCard(){
 function printCard(){const c=db.children.find(x=>String(x.id)===cardChild.value);if(!c){aAlert('أضف طفلًا أولًا');return}printHTML('<div style="padding:20px">'+cardHTML(c)+'</div>')}
 
 /* ---------- التقارير ---------- */
-function reportRows(){return db.children.map(c=>{const pd=db.payments.filter(p=>p.child===c.id).reduce((s,p)=>s+p.amount,0);return{c,fee:netFee(c),pd,rem:Math.max(0,netFee(c)-pd)}})}
+function reportRows(){return db.children.map(c=>{const pd=db.payments.filter(p=>p.child===c.id).reduce((s,p)=>s+p.amount,0);return{c,fee:+c.fee||0,ex:exTotalOf(c),pd,rem:remainOf(c)}})}
 function renderReports(){
- const rows=reportRows(),F=rows.reduce((s,r)=>s+r.fee,0),P=db.payments.reduce((s,p)=>s+p.amount,0),R=rows.reduce((s,r)=>s+r.rem,0);
- rChildren.textContent=num(db.children.length);rPaid.textContent=num(P);rFees.textContent=num(F);
- reportTable.innerHTML=rows.map(r=>`<tr><td>${esc(r.c.name)}</td><td>${esc(r.c.cls)}</td><td>${num(r.fee)}</td><td>${num(r.pd)}</td><td>${num(r.rem)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">لا توجد بيانات</td></tr>';
- reportFoot.innerHTML=rows.length?`<tr><td colspan="2">الإجمالي</td><td>${num(F)}</td><td>${num(P)}</td><td>${num(R)}</td></tr>`:'';
+ const rows=reportRows(),F=rows.reduce((s,r)=>s+r.fee,0),X=rows.reduce((s,r)=>s+r.ex,0),P=db.payments.reduce((s,p)=>s+p.amount,0),R=rows.reduce((s,r)=>s+r.rem,0);
+ rChildren.textContent=num(db.children.length);rPaid.textContent=num(P);rFees.textContent=num(F);rEx.textContent=num(X);
+ reportTable.innerHTML=rows.map(r=>`<tr><td>${esc(r.c.name)}</td><td>${esc(r.c.cls)}</td><td>${num(r.fee)}</td><td>${num(r.ex)}</td><td>${num(r.pd)}</td><td>${num(r.rem)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">لا توجد بيانات</td></tr>';
+ reportFoot.innerHTML=rows.length?`<tr><td colspan="2">الإجمالي</td><td>${num(F)}</td><td>${num(X)}</td><td>${num(P)}</td><td>${num(R)}</td></tr>`:'';
 }
 function printReport(){
  printHTML(`<div style="font-family:Tahoma;padding:20px"><div style="text-align:center"><img src="${LOGO}" style="width:90px"></div><h2 style="text-align:center;color:#075c3a">${esc(db.settings.name)}</h2><h3 style="text-align:center">تقرير مالي مختصر — ${today()} (${hijriStr(today())})</h3><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;text-align:right">${document.querySelector('#reports .table').innerHTML}</table>${sigBlock('report')}</div>`);
@@ -1851,7 +1868,7 @@ function parseCsv(t){
  if(f!==''||row.length){row.push(f);rows.push(row)}
  return rows;
 }
-let balRows=[],balItems=[];
+let balRows=[],balItems=[];const balEx=new Set();
 const BAL_RX={name:/اسم|الطالب|الطفل|الطلاب/,req:/المطلوب|الرسوم|اجمالي|الاجمالي|المستحق/,paid:/الواصل|المدفوع|المسدد|المحصل/,rest:/الباقي|المتبقي|المتأخر/};
 async function loadBalFile(inp){
  const f=inp.files[0];if(!f)return;
@@ -1863,7 +1880,7 @@ async function loadBalFile(inp){
    else throw new Error('هذا ملف إكسل قديم (xls). افتحه في إكسل واحفظه باسم جديد بصيغة xlsx أو csv ثم ارفعه.')}
   rows=rows.filter(r=>r.some(x=>String(x).trim()!==''));
   if(!rows.length)throw new Error('الملف فارغ');
-  balRows=rows;let h=0;
+  balRows=rows;balItems=[];balEx.clear();let h=0;
   for(let i=0;i<Math.min(rows.length,25);i++){const ks=rows[i].map(nameKey);if(ks.some(k=>BAL_RX.name.test(k))&&ks.some(k=>BAL_RX.paid.test(k)||BAL_RX.rest.test(k)||BAL_RX.req.test(k))){h=i;break}}
   $('balHdrRow').value=h+1;buildBalPreview(true);$('balMap').style.display='';
  }catch(e){await aAlert(e&&e.message?e.message:'تعذّرت قراءة الملف')}
@@ -1875,7 +1892,7 @@ function buildBalPreview(fresh){
   if(fresh){const k=hdr.map(nameKey).findIndex(x=>rx.test(x));sel.value=k>=0?String(k):(none?'-1':'0')}else if(old)sel.value=old};
  if(fresh){opts($('balCName'),BAL_RX.name,false);opts($('balCReq'),BAL_RX.req,true);opts($('balCPaid'),BAL_RX.paid,true);opts($('balCRest'),BAL_RX.rest,true)}
  const ci={n:+$('balCName').value,q:+$('balCReq').value,p:+$('balCPaid').value,r:+$('balCRest').value};
- const seen={};balItems=[];
+ const prev={};balItems.forEach((x,i)=>{const c=$('bk'+i);if(c&&!c.disabled)prev[x.row]=c.checked});const seen={};balItems=[];
  balRows.slice(h+1).forEach((r,idx)=>{
   const name=String(r[ci.n]==null?'':r[ci.n]).replace(/\s+/g,' ').trim(),key=nameKey(name);
   const g=c=>c<0?null:moneyOf(r[c]),req=g(ci.q),paid=g(ci.p),rest=g(ci.r);
@@ -1884,12 +1901,13 @@ function buildBalPreview(fresh){
   else if(/^(الاجمالي|اجمالي|المجموع|مجموع|الاجمالى)/.test(key)){it.st='صف إجمالي — يُتجاهل'}
   else if([req,paid,rest].some(x=>x!==null&&isNaN(x))){it.st='قيمة غير رقمية'}
   else if([req,paid,rest].some(x=>x!==null&&x<0)){it.st='قيمة سالبة'}
-  else if(req===null&&paid===null&&rest===null){it.st='بلا مبالغ'}
+  else if(req===null&&paid===null&&rest===null&&!balEx.has(key)){it.st='بلا مبالغ';it.noamt=true}
   else{
    const ex=db.imports.find(i=>i.key===key);
    if(ex&&isLinkedImp(ex)){const fee0=req>0?req:(paid||0)+(rest||0),same=Math.abs(fee0-ex.fee)<.01&&Math.abs((paid||0)-ex.paid)<.01;it.st=same?'مرتبط بطفل — لا تغيير':'مرتبط بطفل — فرق للمراجعة (المحفوظ: مطلوب '+num(ex.fee)+'، واصل '+num(ex.paid)+')';it.kind='linked'}
    else if(db.children.some(c=>nameKey(c.name)===key)&&!ex){it.st='مسجّل كطفل بالفعل';it.kind='reg'}
    else{it.ok=true;it.kind=ex?'upd':'new';it.st=ex?'تحديث':'جديد';
+    if(balEx.has(key)&&req===null&&paid===null&&rest===null){it.exempt=true;it.st+=' — معفى من الرسوم'}
     if(req!==null&&paid!==null&&rest!==null&&Math.abs(req-paid-rest)>.01){it.warn='⚠ المطلوب ≠ الواصل + الباقي'}
     else if(req===null&&paid!==null&&rest!==null){it.warn='المطلوب = الواصل + الباقي'}}
   }
@@ -1897,7 +1915,7 @@ function buildBalPreview(fresh){
   balItems.push(it);
  });
  Object.values(seen).forEach(a=>{if(a.length>1)a.forEach(i=>{const it=balItems[i];if(it.ok){it.dup=true;it.warn='⚠ مكرر في الملف (الأسطر '+a.map(j=>balItems[j].row).join('، ')+') — اختر سطرًا واحدًا'}})});
- $('balPrev').innerHTML=balItems.map((it,i)=>`<tr${it.ok?'':' style="opacity:.55"'}><td><input type="checkbox" id="bk${i}" style="width:auto;margin:0" ${it.ok&&!it.dup?'checked':''} ${it.ok?'':'disabled'} onchange="updBalSum()"></td><td>${it.row}</td><td>${esc(it.name)}</td><td>${it.req==null?'—':num(it.req)}</td><td>${it.paid==null?'—':num(it.paid)}</td><td>${it.rest==null?'—':num(it.rest)}</td><td>${esc(it.st)}${it.warn?'<br><small>'+esc(it.warn)+'</small>':''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا توجد صفوف</td></tr>';
+ $('balPrev').innerHTML=balItems.map((it,i)=>`<tr${it.ok?'':' style="opacity:.55"'}><td><input type="checkbox" id="bk${i}" style="width:auto;margin:0" ${it.ok&&(prev[it.row]!==undefined?prev[it.row]:!it.dup)?'checked':''} ${it.ok?'':'disabled'} onchange="updBalSum()"></td><td>${it.row}</td><td>${esc(it.name)}</td><td>${it.req==null?'—':num(it.req)}</td><td>${it.paid==null?'—':num(it.paid)}</td><td>${it.rest==null?'—':num(it.rest)}</td><td>${esc(it.st)}${it.warn?'<br><small>'+esc(it.warn)+'</small>':''}${it.noamt?` <button class="btn light mini" onclick="balExemptOne(${i},1)">إعفاء</button>`:''}${it.exempt?` <button class="btn light mini" onclick="balExemptOne(${i},0)">إلغاء الإعفاء</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا توجد صفوف</td></tr>';
  updBalSum();
 }
 const balPicked=()=>balItems.map((it,i)=>({it,i})).filter(x=>x.it.ok&&$('bk'+x.i)&&$('bk'+x.i).checked).map(x=>x.it);
@@ -1905,9 +1923,12 @@ function feeOfItem(it){return it.req>0?it.req:(it.paid||0)+(it.rest||0)}
 function updBalSum(){
  const s=balPicked(),bad=balItems.filter(x=>!x.ok).length;
  const tq=s.reduce((t,x)=>t+feeOfItem(x),0),tp=s.reduce((t,x)=>t+(x.paid||0),0);
- $('balSum').textContent='المحدد: '+num(s.length)+' (جديد '+num(s.filter(x=>x.kind==='new').length)+'، تحديث '+num(s.filter(x=>x.kind==='upd').length)+') — المستبعد: '+num(bad)+' — إجمالي المطلوب '+num(tq)+'، الواصل '+num(tp)+'، الباقي '+num(Math.max(0,tq-tp));
+ const na=balItems.filter(x=>x.noamt).length,bx=$('balExAll');if(bx){bx.style.display=na?'':'none';bx.textContent='إعفاء كل الصفوف بلا مبالغ ('+num(na)+')'}
+ $('balSum').textContent='المحدد: '+num(s.length)+' (جديد '+num(s.filter(x=>x.kind==='new').length)+'، تحديث '+num(s.filter(x=>x.kind==='upd').length)+') — معفى: '+num(s.filter(x=>x.exempt).length)+' — المستبعد: '+num(bad)+' — إجمالي المطلوب '+num(tq)+'، الواصل '+num(tp)+'، الباقي '+num(Math.max(0,tq-tp));
 }
-function cancelBalImport(){balRows=[];balItems=[];$('balMap').style.display='none';$('balPrev').innerHTML=''}
+function balExemptOne(i,on){const k=balItems[i]&&balItems[i].key;if(!k)return;if(on)balEx.add(k);else balEx.delete(k);buildBalPreview()}
+function balExemptAll(){balItems.forEach(x=>{if(x.noamt)balEx.add(x.key)});buildBalPreview()}
+function cancelBalImport(){balRows=[];balItems=[];balEx.clear();$('balMap').style.display='none';$('balPrev').innerHTML=''}
 async function doBalImport(){
  const sel=balPicked();if(!sel.length){await aAlert('لم تحدد أي صف');return}
  const ks={};for(const x of sel){if(ks[x.key]){await aAlert('الاسم "'+x.name+'" محدد أكثر من مرة (الأسطر '+ks[x.key]+' و'+x.row+'). اترك سطرًا واحدًا.');return}ks[x.key]=x.row}
@@ -1915,9 +1936,9 @@ async function doBalImport(){
  if(!await aConfirm('استيراد '+num(sel.length)+' سجلًا (جديد '+num(nw)+'، تحديث '+num(up)+')؟'))return;
  let k=0;
  for(const x of sel){
-  const fee=feeOfItem(x),paid=x.paid||0,rest=x.rest!=null?x.rest:Math.max(0,fee-paid),ex=db.imports.find(i=>i.key===x.key);
-  if(ex){Object.assign(ex,{name:x.name,fee,paid,rest,at:today()})}
-  else db.imports.push({id:Date.now()+(k++),name:x.name,key:x.key,fee,paid,rest,at:today(),childId:0});
+  const fee=feeOfItem(x),paid=x.paid||0,rest=x.rest!=null?x.rest:Math.max(0,fee-paid),ex=db.imports.find(i=>i.key===x.key),exm=!!x.exempt;
+  if(ex){Object.assign(ex,{name:x.name,fee,paid,rest,at:today(),exempt:exm})}
+  else db.imports.push({id:Date.now()+(k++),name:x.name,key:x.key,fee,paid,rest,at:today(),childId:0,exempt:exm});
  }
  const skipped=balItems.filter(x=>!x.ok).length;
  cancelBalImport();save();toast('تم الاستيراد');
@@ -1929,24 +1950,24 @@ function renderBalList(){
  $('balCount').textContent=num(all.length);
  const tf=all.reduce((t,i)=>t+i.fee,0),tp=all.reduce((t,i)=>t+i.paid,0);
  $('balTot').textContent='إجمالي المطلوب '+num(tf)+' — الواصل '+num(tp)+' — الباقي '+num(Math.max(0,tf-tp))+' — غير المسجلين كأطفال: '+num(all.filter(i=>!isLinkedImp(i)).length);
- $('balList').innerHTML=list.slice(0,500).map((i,n)=>`<tr><td>${n+1}</td><td>${esc(i.name)}</td><td>${num(i.fee)}</td><td>${num(i.paid)}</td><td>${num(i.rest)}</td><td>${isLinkedImp(i)?'مسجّل كطفل':'غير مسجّل'}</td><td>${isLinkedImp(i)?'':`<button class="btn danger mini" onclick="delBalOne(${i.id})">حذف</button>`}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا توجد أسماء مستوردة</td></tr>'+(list.length>500?'':'');
+ $('balList').innerHTML=list.slice(0,500).map((i,n)=>`<tr><td>${n+1}</td><td>${esc(i.name)}${i.exempt?' <small>(معفى)</small>':''}</td><td>${num(i.fee)}</td><td>${num(i.paid)}</td><td>${num(i.rest)}</td><td>${isLinkedImp(i)?'مسجّل كطفل':'غير مسجّل'}</td><td>${isLinkedImp(i)?'':`<button class="btn danger mini" onclick="delBalOne(${i.id})">حذف</button>`}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">لا توجد أسماء مستوردة</td></tr>'+(list.length>500?'':'');
 }
 async function delBalOne(id){const i=db.imports.find(x=>x.id===id);if(!i)return;if(!await aConfirm('حذف "'+i.name+'" من القائمة المستوردة؟'))return;db.imports=db.imports.filter(x=>x.id!==id);save()}
 async function delBalUnlinked(){const n=db.imports.filter(i=>!isLinkedImp(i)).length;if(!n){await aAlert('لا توجد أسماء غير مسجلة');return}if(!await aConfirm('حذف '+num(n)+' اسمًا غير مسجل من القائمة المستوردة؟ الأطفال المسجلون وأرصدتهم لا تتأثر.'))return;db.imports=db.imports.filter(isLinkedImp);save()}
 function renderImpList(){
  const dl=$('impList');if(!dl)return;
- dl.innerHTML=db.imports.filter(i=>!isLinkedImp(i)).map(i=>`<option value="${esc(i.name)}"${fin()?` label="الباقي ${num(i.rest)}"`:''}></option>`).join('');
+ dl.innerHTML=db.imports.filter(i=>!isLinkedImp(i)).map(i=>`<option value="${esc(i.name)}"${fin()?` label="${i.exempt?'معفى':'الباقي '+num(i.rest)}"`:''}></option>`).join('');
 }
 function onCName(){
  const h=$('impHint');if(!h)return;
  const imp=editId?null:unlinkedImp(nameKey(cName.value));
  if(!imp){h.style.display='none';return}
  h.style.display='';
- h.textContent=fin()?'✔ مطابق لاسم مستورد — المطلوب '+num(imp.fee)+'، الواصل '+num(imp.paid)+'، الباقي '+num(imp.rest)+'. عند الحفظ يُسجَّل الواصل رصيدًا افتتاحيًا ويُعتمد المطلوب رسومًا للطفل.':'✔ مطابق لاسم مستورد — تُربط أرصدته تلقائيًا عند الحفظ.';
- if(fin()&&!editId)cFee.value=imp.fee;
+ h.textContent=imp.exempt?'✔ مطابق لاسم مستورد — طفل معفى من الرسوم، يُسجَّل إعفاؤه تلقائيًا عند الحفظ.':fin()?'✔ مطابق لاسم مستورد — المطلوب '+num(imp.fee)+'، الواصل '+num(imp.paid)+'، الباقي '+num(imp.rest)+'. عند الحفظ يُسجَّل الواصل رصيدًا افتتاحيًا ويُعتمد المطلوب رسومًا للطفل.':'✔ مطابق لاسم مستورد — تُربط أرصدته تلقائيًا عند الحفظ.';
+ if(fin()&&!editId&&!imp.exempt)cFee.value=imp.fee;
 }
 function applyImport(rec,imp){
- rec.fee=imp.fee;imp.childId=rec.id;
+ imp.childId=rec.id;if(imp.exempt){rec.feeStatus='total';rec.disc={type:'pct',val:100};rec.exDate=rec.join||today()}else rec.fee=imp.fee;
  if(imp.paid>0)db.payments.push({id:Date.now()+1,child:rec.id,amount:imp.paid,date:rec.join||today(),hijri:'',method:'رصيد افتتاحي',note:'رصيد سابق مستورد من الجدول',by:cur?cur.u:'',open:true});
 }
 
@@ -2019,6 +2040,62 @@ async function closeApp(){
  cur=null;
  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;font-family:Tahoma,sans-serif;padding:20px;background:#f4faf6;color:#075c3a"><div><h2>تم إغلاق التطبيق</h2><p>يمكنك الآن إغلاق هذه النافذة أو الرجوع للخلف.</p><button onclick="location.reload()" style="padding:10px 22px;border:0;border-radius:10px;background:#075c3a;color:#fff;font-size:16px">فتح التطبيق مرة أخرى</button></div></div>';
  try{window.close()}catch(e){}
+}
+
+
+/* ---------- حالة الرسوم والإعفاء ---------- */
+const feeStatusOf=c=>c.feeStatus||(c.disc&&+c.disc.val>0?((c.disc.type==='pct'&&+c.disc.val>=100)?'total':'partial'):'full');
+const paidOf=id=>r2(db.payments.filter(p=>p.child===id).reduce((t,p)=>t+p.amount,0));
+const waivedOf=id=>r2(db.waivers.filter(w=>w.child===id).reduce((t,w)=>t+w.amount,0));
+const exStatusAmt=c=>r2(Math.max(0,(+c.fee||0)-netFee(c)));
+const exTotalOf=c=>r2(exStatusAmt(c)+waivedOf(c.id));
+const remainOf=c=>Math.max(0,r2(netFee(c)-paidOf(c.id)-waivedOf(c.id)));
+function onFeeStatus(){
+ const f=fin(),st=cFeeStatus.value,adm=isAdmin();
+ cDiscTypeL.style.display=cDiscValL.style.display=(f&&st==='partial')?'':'none';
+ cReasonL.style.display=(adm&&st!=='full')?'':'none';
+ const pv=$('cFeePrev'),fee=+cFee.value||0;
+ if(f&&st!=='full'){
+  let net=0;if(st==='partial'){const dv=+cDiscVal.value||0;net=Math.max(0,r2(cDiscType.value==='amt'?fee-dv:fee*(1-Math.min(100,dv)/100)))}
+  pv.style.display='';pv.textContent='الرسوم '+num(fee)+' — المعفى '+num(r2(fee-net))+' — المستحق بعد الإعفاء '+num(net);
+ }else pv.style.display='none';
+}
+['cFee','cDiscVal'].forEach(i=>$(i).addEventListener('input',onFeeStatus));
+function updWaiveBtn(){
+ const b=$('pWaiveBtn');if(!b)return;
+ const c=db.children.find(x=>String(x.id)===pChild.value),ex=c&&feeStatusOf(c)!=='full';
+ b.disabled=!(c&&(ex||isAdmin()));
+ b.textContent=(c&&!ex)?'إعفاء استثنائي':'إعفاء';
+ b.title=b.disabled?'متاح للأطفال المعفيين، أو للمدير للإعفاء الاستثنائي':'';
+}
+function openWaive(){
+ const c=db.children.find(x=>String(x.id)===pChild.value);if(!c)return;
+ const ex=feeStatusOf(c)!=='full';
+ if(!ex&&!isAdmin()){aAlert('الإعفاء الاستثنائي للمدير فقط');return}
+ const rem=remainOf(c);if(rem<=0){aAlert('لا يوجد مبلغ متبقٍ على هذا الطفل للإعفاء منه');return}
+ const st=statusOf(c),sug=st.over&&st.over.length?st.over[0].left:(st.next?st.next.left:rem);
+ modalBody.innerHTML=`<div><h3 style="margin-top:0">${ex?'إعفاء':'إعفاء استثنائي / مؤقت'} — ${esc(c.name)}</h3><p style="font-size:13px">المتبقي حاليًا: <b>${num(rem)}</b></p>
+ <div class="form"><label>مبلغ الإعفاء<input id="wAmount" type="number" min="0" value="${Math.min(rem,sug||rem)}"></label>
+ <label>التاريخ<input id="wDate" type="date" value="${today()}"></label>
+ <label class="full">${ex?'القسط أو الشهر (اختياري)':'القسط أو الشهر المعفى (مطلوب)'}<input id="wPeriod" placeholder="مثال: القسط الثالث / شهر نوفمبر"></label></div>
+ <div class="actions"><button class="btn gold" onclick="doWaive(${c.id})">اعتماد الإعفاء</button><button class="btn light" onclick="closeModal()">إلغاء</button></div></div>`;
+ $('modal').classList.add('on');updateBackBtn();
+ setTimeout(()=>{const a=$('wAmount');if(a){a.focus();a.select()}},50);
+}
+async function doWaive(id){
+ const c=db.children.find(x=>x.id===id);if(!c)return;
+ const ex=feeStatusOf(c)!=='full';if(!ex&&!isAdmin())return;
+ const amt=r2(+wAmount.value||0),rem=remainOf(c),period=wPeriod.value.trim();
+ if(!(amt>0)){await aAlert('أدخل مبلغ إعفاء صحيحًا');return}
+ if(amt>rem+0.009){await aAlert('مبلغ الإعفاء أكبر من المتبقي على الطفل ('+num(rem)+')');return}
+ if(!ex&&!period){await aAlert('حدّد القسط أو الشهر الذي يشمله الإعفاء الاستثنائي');return}
+ db.waivers.push({id:Date.now(),child:id,amount:amt,date:wDate.value||today(),period,kind:ex?'status':'exc',by:cur?cur.u:''});
+ closeModal();save();toast('تم اعتماد الإعفاء');
+}
+async function delWaiver(id){
+ if(!isAdmin())return;const w=db.waivers.find(x=>x.id===id);if(!w)return;
+ if(!await aConfirm('حذف هذا الإعفاء ('+num(w.amount)+') وإعادة المبلغ إلى المتبقي على الطفل؟'))return;
+ db.waivers=db.waivers.filter(x=>x.id!==id);save();
 }
 
 /* Enter = زر الحفظ في كل النماذج */
